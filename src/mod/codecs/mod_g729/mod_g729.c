@@ -38,11 +38,12 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_g729_load);
 SWITCH_MODULE_DEFINITION(mod_g729, mod_g729_load, NULL, NULL);
 
 #ifndef G729_PASSTHROUGH
-#include "g729.h"
+#include <bcg729/decoder.h>
+#include <bcg729/encoder.h>
 
 struct g729_context {
-	struct dec_state decoder_object;
-	struct cod_state encoder_object;
+	bcg729DecoderChannelContextStruct* decoder_object;
+	bcg729EncoderChannelContextStruct* encoder_object;
 };
 #endif
 
@@ -69,11 +70,11 @@ static switch_status_t switch_g729_init(switch_codec_t *codec, switch_codec_flag
 		}
 
 		if (encoding) {
-			g729_init_coder(&context->encoder_object, 0);
+			context->encoder_object = initBcg729EncoderChannel();
 		}
 
 		if (decoding) {
-			g729_init_decoder(&context->decoder_object);
+			context->decoder_object = initBcg729DecoderChannel();
 		}
 
 		codec->private_info = context;
@@ -86,6 +87,9 @@ static switch_status_t switch_g729_init(switch_codec_t *codec, switch_codec_flag
 static switch_status_t switch_g729_destroy(switch_codec_t *codec)
 {
 #ifndef G729_PASSTHROUGH
+	struct g729_context *context = codec->private_info;
+	closeBcg729DecoderChannel(context->decoder_object);
+	closeBcg729EncoderChannel(context->encoder_object);
 	codec->private_info = NULL;
 #endif
 	return SWITCH_STATUS_SUCCESS;
@@ -117,7 +121,7 @@ static switch_status_t switch_g729_encode(switch_codec_t *codec,
 		int loops = (int) decoded_data_len / 160;
 
 		for (x = 0; x < loops && new_len < *encoded_data_len; x++) {
-			g729_coder(&context->encoder_object, ddp, edp, &cbret);
+			bcg729Encoder(context->encoder_object, ddp, edp);
 			edp += 10;
 			ddp += 80;
 			new_len += 10;
@@ -183,7 +187,7 @@ static switch_status_t switch_g729_decode(switch_codec_t *codec,
 			}
 
 			for (x = 0; x < loops && new_len < *decoded_data_len; x++) {
-				g729_decoder(&context->decoder_object, ddp, edp, plen);
+				bcg729Decoder(context->decoder_object, edp, 0, ddp);
 
 				ddp += 80;
 				edp += divisor;
